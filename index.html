@@ -1,1 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的單車軌跡地圖</title>
+    
+    <!-- 引入 Leaflet 樣式與腳本 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    
+    <!-- 引入 leaflet-gpx 外掛 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/2.1.2/gpx.min.js"></script>
 
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { height: 100vh; width: 100%; }
+        .gpx-info { font-size: 14px; line-height: 1.5; }
+        .gpx-info strong { color: #2c3e50; }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <script>
+        // 1. 初始化地圖，預設中心點與縮放層級
+        const map = L.map('map').setView([23.8, 120.9], 8); // 預設台灣中心附近
+
+        // 2. 定義底圖（一般街道圖 & 衛星圖）
+        const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        });
+
+        const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        });
+
+        // 將街道圖設為預設顯示
+        streetLayer.addTo(map);
+
+        // 3. 加入圖層切換控制項（右上角）
+        const baseMaps = {
+            "一般地圖": streetLayer,
+            "衛星地圖": satelliteLayer
+        };
+        L.control.layers(baseMaps).addTo(map);
+
+        // 4. 定義要載入的 GPX 檔案列表
+        // ⚠️ 重要：請將這裡的檔名替換成你實際上傳到 gpx/ 資料夾的檔案名稱
+        const gpxFiles = [
+            'gpx/route1.gpx',
+            'gpx/route2.gpx',
+            // 可以在這裡繼續新增更多檔案
+        ];
+
+        // 5. 迴圈載入每一個 GPX 檔案
+        gpxFiles.forEach(file => {
+            const trackColor = getRandomColor(); // 為每條軌跡分配隨機顏色，方便區分
+
+            new L.GPX(file, {
+                async: true,
+                polyline_options: {
+                    color: trackColor,
+                    weight: 5,
+                    opacity: 0.8
+                }
+            }).on('loaded', function(e) {
+                const gpxLayer = e.target;
+                
+                // --- 核心：為每一條軌跡綁定點擊事件，顯示資訊彈窗 ---
+                gpxLayer.on('click', function() {
+                    // 使用 leaflet-gpx 提供的 accessor 方法取得軌跡資訊
+                    const name = gpxLayer.get_name() || '未命名路線';
+                    const distance = gpxLayer.get_distance(); // 單位：公尺
+                    const elevationGain = gpxLayer.get_elevation_gain(); // 爬升高度（公尺）
+                    const movingTime = gpxLayer.get_moving_time(); // 移動時間（秒）
+
+                    // 格式化距離與時間
+                    const distKm = (distance / 1000).toFixed(2) + ' 公里';
+                    const timeStr = formatTime(movingTime);
+                    const elevStr = elevationGain ? elevationGain.toFixed(0) + ' 公尺' : 'N/A';
+
+                    // 組合彈窗內容（HTML）
+                    const popupContent = `
+                        <div class="gpx-info">
+                            <h3>${name}</h3>
+                            <p><strong>總距離：</strong> ${distKm}</p>
+                            <p><strong>總爬升：</strong> ${elevStr}</p>
+                            <p><strong>移動時間：</strong> ${timeStr}</p>
+                        </div>
+                    `;
+                    
+                    // 將彈窗綁定到此軌跡圖層
+                    gpxLayer.bindPopup(popupContent).openPopup();
+                });
+
+                // 將 GPX 圖層加入地圖
+                gpxLayer.addTo(map);
+            });
+        });
+
+        // --- 輔助函式 ---
+
+        // 產生隨機顏色
+        function getRandomColor() {
+            const letters = '0123456789ABCDEF';
+            let color = '#';
+            for (let i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
+        // 將秒數格式化為 "X小時 Y分鐘"
+        function formatTime(seconds) {
+            if (!seconds) return 'N/A';
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            if (hours > 0) {
+                return `${hours} 小時 ${minutes} 分鐘`;
+            } else {
+                return `${minutes} 分鐘`;
+            }
+        }
+    </script>
+</body>
+</html>
