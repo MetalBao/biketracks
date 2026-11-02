@@ -76,25 +76,47 @@
                         const gpxLayer = e.target;
                         
                         gpxLayer.on('click', function() {
-                            const name = gpxLayer.get_name() || '未命名路線';
-                            const distance = gpxLayer.get_distance(); 
-                            const elevationGain = gpxLayer.get_elevation_gain(); 
-                            const movingTime = gpxLayer.get_moving_time(); 
+    const name = gpxLayer.get_name() || '未命名路線';
+    const distance = gpxLayer.get_distance(); // 公尺
+    const elevationGain = gpxLayer.get_elevation_gain(); // 公尺
+    
+    // --- 修正時間計算的防呆邏輯 ---
+    const totalTime = gpxLayer.get_total_time(); // 總經過時間（包含休息）
+    let movingTime = gpxLayer.get_moving_time(); // 系統算的移動時間
 
-                            const distKm = (distance / 1000).toFixed(2) + ' 公里';
-                            const timeStr = formatTime(movingTime);
-                            const elevStr = elevationGain ? elevationGain.toFixed(0) + ' 公尺' : '無資料';
+    // 如果移動時間比總時間還長，或者超過 48 小時 (172800秒)，代表計算異常
+    if (!movingTime || movingTime > totalTime || movingTime > 172800) {
+        movingTime = totalTime; // 強制退回使用總時間
+    }
 
-                            const popupContent = `
-                                <div class="gpx-info">
-                                    <h3>${name}</h3>
-                                    <p><strong>總距離：</strong> ${distKm}</p>
-                                    <p><strong>總爬升：</strong> ${elevStr}</p>
-                                    <p><strong>移動時間：</strong> ${timeStr}</p>
-                                </div>
-                            `;
-                            gpxLayer.bindPopup(popupContent).openPopup();
-                        });
+    const distKm = (distance / 1000).toFixed(2);
+    const elevStr = elevationGain ? elevationGain.toFixed(0) + ' 公尺' : '無資料';
+
+    let timeStr = '無資料';
+    let speedStr = '無資料';
+
+    if (movingTime && movingTime > 0) {
+        timeStr = formatTime(movingTime);
+        
+        // 計算平均速度 (公里 / 小時)
+        const hours = movingTime / 3600;
+        const avgSpeed = (distKm / hours).toFixed(1);
+        speedStr = avgSpeed + ' km/h';
+    }
+
+    // 組合彈窗內容
+    const popupContent = `
+        <div class="gpx-info">
+            <h3>${name}</h3>
+            <p><strong>總距離：</strong> ${distKm} 公里</p>
+            <p><strong>總爬升：</strong> ${elevStr}</p>
+            <p><strong>平均速度：</strong> ${speedStr}</p>
+            <p><strong>移動時間：</strong> ${timeStr}</p>
+        </div>
+    `;
+    
+    gpxLayer.bindPopup(popupContent).openPopup();
+});
 
                         gpxLayer.addTo(map);
                     });
