@@ -63,84 +63,73 @@
                     console.log("gpx 資料夾裡沒有找到任何 GPX 檔案喔！");
                 }
 
-                // 4. 迴圈載入每一個 GPX 檔案
-                gpxFiles.forEach(file => {
-                    new L.GPX(file, {
-                        async: true,
-                        polyline_options: {
-                            color: '#4169E1', // 寶藍色
-                            weight: 6,
-                            opacity: 0.9
-                        }
-                    }).on('loaded', function(e) {
-                        const gpxLayer = e.target;
-                        
-                        gpxLayer.on('click', function() {
-    const name = gpxLayer.get_name() || '未命名路線';
-    const distance = gpxLayer.get_distance(); // 公尺
-    const elevationGain = gpxLayer.get_elevation_gain(); // 公尺
-    
-    // --- 修正時間計算的防呆邏輯 ---
-    const totalTime = gpxLayer.get_total_time(); // 總經過時間（包含休息）
-    let movingTime = gpxLayer.get_moving_time(); // 系統算的移動時間
-
-    // 如果移動時間比總時間還長，或者超過 48 小時 (172800秒)，代表計算異常
-    if (!movingTime || movingTime > totalTime || movingTime > 172800) {
-        movingTime = totalTime; // 強制退回使用總時間
-    }
-
-    const distKm = (distance / 1000).toFixed(2);
-    const elevStr = elevationGain ? elevationGain.toFixed(0) + ' 公尺' : '無資料';
-
-    let timeStr = '無資料';
-    let speedStr = '無資料';
-
-    if (movingTime && movingTime > 0) {
-        timeStr = formatTime(movingTime);
+                // 5. 迴圈載入每一個 GPX 檔案
+gpxFiles.forEach(file => {
+    new L.GPX(file, {
+        async: true,
+        // 👇 隱藏起點、終點與所有航點的藍色水滴圖標
+        markers: {
+            startIcon: null,
+            endIcon: null,
+            wptIcon: null
+        },
+        polyline_options: {
+            color: '#4169E1',
+            weight: 6,
+            opacity: 0.9
+        }
+    }).on('loaded', function(e) {
+        const gpxLayer = e.target;
         
-        // 計算平均速度 (公里 / 小時)
-        const hours = movingTime / 3600;
-        const avgSpeed = (distKm / hours).toFixed(1);
-        speedStr = avgSpeed + ' km/h';
-    }
+        gpxLayer.on('click', function() {
+            const name = gpxLayer.get_name() || '未命名路線';
+            const distance = gpxLayer.get_distance(); 
+            const elevationGain = gpxLayer.get_elevation_gain(); 
 
-    // 組合彈窗內容
-    const popupContent = `
-        <div class="gpx-info">
-            <h3>${name}</h3>
-            <p><strong>總距離：</strong> ${distKm} 公里</p>
-            <p><strong>總爬升：</strong> ${elevStr}</p>
-            <p><strong>平均速度：</strong> ${speedStr}</p>
-            <p><strong>移動時間：</strong> ${timeStr}</p>
-        </div>
-    `;
-    
-    gpxLayer.bindPopup(popupContent).openPopup();
-});
-
-                        gpxLayer.addTo(map);
-                    });
-                });
-
-            } catch (error) {
-                console.error('無法讀取 GPX 列表:', error);
+            // --- 核心修正：自己抓開始與結束時間 ---
+            const startTime = gpxLayer.get_start_time(); // Date 物件
+            const endTime = gpxLayer.get_end_time();     // Date 物件
+            
+            let totalTime = 0;
+            if (startTime && endTime && endTime > startTime) {
+                totalTime = (endTime.getTime() - startTime.getTime()) / 1000; // 換算成秒
             }
-        }
 
-        // 執行自動載入
-        loadAndDrawGPX();
+            const distKm = (distance / 1000).toFixed(2);
+            const elevStr = elevationGain ? elevationGain.toFixed(0) + ' 公尺' : '無資料';
 
-        // --- 輔助函式 ---
-        function formatTime(seconds) {
-            if (!seconds) return '無資料';
-            const hours = Math.floor(seconds / 3600);
-            const minutes = Math.floor((seconds % 3600) / 60);
-            if (hours > 0) {
-                return `${hours} 小時 ${minutes} 分鐘`;
+            let timeStr = '無資料';
+            let speedStr = '無資料';
+
+            // 計算時間與速度 (排除異常狀況)
+            if (totalTime > 0 && totalTime < 86400) {
+                // 小於 24 小時，正常顯示
+                timeStr = formatTime(totalTime);
+                const hours = totalTime / 3600;
+                const avgSpeed = (distKm / hours).toFixed(1);
+                speedStr = avgSpeed + ' km/h';
+            } else if (totalTime >= 86400) {
+                // 大於 24 小時，顯示天數
+                const days = Math.floor(totalTime / 86400);
+                timeStr = `超過 ${days} 天 (多日行程)`;
+                speedStr = '不計算';
             } else {
-                return `${minutes} 分鐘`;
+                timeStr = '無時間紀錄';
             }
-        }
-    </script>
-</body>
-</html>
+
+            const popupContent = `
+                <div class="gpx-info">
+                    <h3>${name}</h3>
+                    <p><strong>總距離：</strong> ${distKm} 公里</p>
+                    <p><strong>總爬升：</strong> ${elevStr}</p>
+                    <p><strong>平均速度：</strong> ${speedStr}</p>
+                    <p><strong>移動時間：</strong> ${timeStr}</p>
+                </div>
+            `;
+            
+            gpxLayer.bindPopup(popupContent).openPopup();
+        });
+
+        gpxLayer.addTo(map);
+    });
+});
