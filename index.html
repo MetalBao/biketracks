@@ -56,14 +56,22 @@
 
         // 5. 迴圈載入每一個 GPX 檔案
         gpxFiles.forEach(file => {
-            const trackColor = getRandomColor(); // 為每條軌跡分配隨機顏色，方便區分
+            const gpxFiles = [ ... ];
 
-            new L.GPX(file, {
-                async: true,
-                polyline_options: {
-                    color: trackColor,
-                    weight: 5,
-                    opacity: 0.8
+gpxFiles.forEach(file => {
+    // 將原本的 getRandomColor() 刪除
+    
+    new L.GPX(file, {
+        async: true,
+        polyline_options: {
+            color: '#4169E1', // 👈 改成寶藍色
+            weight: 6,        // 👈 建議從 5 改成 6，視覺上會更清楚
+            opacity: 0.9      // 👈 從 0.8 提升到 0.9 減少透明感
+        }
+    }).on('loaded', function(e) {
+        // ... 下面維持不變 ...
+
+        
                 }
             }).on('loaded', function(e) {
                 const gpxLayer = e.target;
