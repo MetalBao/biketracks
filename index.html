@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的單車軌跡地圖</title>
+    
+    <!-- 引入 Leaflet 樣式與腳本 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    
+    <!-- 引入 leaflet-gpx 外掛 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/2.1.2/gpx.min.js"></script>
+
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { height: 100vh; width: 100%; }
+        .gpx-info { font-size: 14px; line-height: 1.5; }
+        .gpx-info strong { color: #2c3e50; }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <script>
+        // 1. 初始化地圖
+        const map = L.map('map').setView([23.8, 120.9], 8); 
+
+        // 2. 定義底圖
+        const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        });
+
+        const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri'
+        });
+
+        streetLayer.addTo(map);
+
+        // 3. 加入圖層切換控制項
+        const baseMaps = {
+            "一般地圖": streetLayer,
+            "衛星地圖": satelliteLayer
+        };
+        L.control.layers(baseMaps).addTo(map);
+
+        // --- 4. 自動抓取 GPX 檔案列表 ---
+        // ⚠️ 請確認這裡是你的 GitHub 用戶名和倉庫名稱
+        const githubUser = 'MetalBao'; 
+        const repoName = 'biketracks';
+
+        async function loadAndDrawGPX() {
+            const apiUrl = `https://api.github.com/repos/${githubUser}/${repoName}/contents/gpx`;
+            
+            try {
+                // 向 GitHub 請求 gpx 資料夾的內容
+                const response = await fetch(apiUrl);
+                const files = await response.json();
+
+                // 過濾出 .gpx 結尾的檔案
+                const gpxFiles = files
+                    .filter(file => file.name.toLowerCase().endsWith('.gpx'))
+                    .map(file => `gpx/${file.name}`);
+
+                if (gpxFiles.length === 0) {
+                    console.log("gpx 資料夾裡沒有找到任何 GPX 檔案喔！");
+                }
+
+                // 5. 迴圈載入每一個 GPX 檔案
+                gpxFiles.forEach(file => {
+                    new L.GPX(file, {
+                        async: true,
+                        // 👇 隱藏起點、終點與所有航點的藍色水滴圖標
+                        markers: {
+                            startIcon: null,
+                            endIcon: null,
+                            wptIcon: null
+                        },
+                        polyline_options: {
+                            color: '#4169E1', // 👈 寶藍色
+                            weight: 6,        // 軌跡粗細
+                            opacity: 0.9      // 透明度
+                        }
+                    }).on('loaded', function(e) {
+                        const gpxLayer = e.target;
+                        
+                        // --- 核心：點擊事件與時間防呆 ---
+                        gpxLayer.on('click', function() {
+                            const name = gpxLayer.get_name() || '未命名路線';
+                            const distance = gpxLayer.get_distance(); 
+                            const elevationGain = gpxLayer.get_elevation_gain(); 
+
+                            // 自己抓開始與結束時間，避免外掛算錯
+                            const startTime = gpxLayer.get_start_time(); 
+                            const endTime = gpxLayer.get_end_time();     
+                            
+                            let totalTime = 0;
+                            if (startTime && endTime && endTime > startTime) {
+                                totalTime = (endTime.getTime() - startTime.getTime()) / 1000; // 換算成秒
+                            }
+
+                            const distKm = (distance / 1000).toFixed(2);
+                            const elevStr = elevationGain ? elevationGain.toFixed(0) + ' 公尺' : '無資料';
+
+                            let timeStr = '無資料';
+                            let speedStr = '無資料';
+
+                            // 計算時間與速度
+                            if (totalTime > 0 && totalTime < 86400) {
+                                // 小於 24 小時，正常顯示
+                                timeStr = formatTime(totalTime);
+                                const hours = totalTime / 3600;
+                                const avgSpeed = (distKm / hours).toFixed(1);
+                                speedStr = avgSpeed + ' km/h';
+                            } else if (totalTime >= 86400) {
+                                // 大於 24 小時，顯示天數
+                                const days = Math.floor(totalTime / 86400);
+                                timeStr = `超過 ${days} 天 (多日行程)`;
+                                speedStr = '不計算';
+                            } else {
+                                timeStr = '無時間紀錄';
+                            }
+
+                            const popupContent = `
+                                <div class="gpx-info">
+                                    <h3>${name}</h3>
+                                    <p><strong>總距離：</strong> ${distKm} 公里</p>
+                                    <p><strong>總爬升：</strong> ${elevStr}</p>
+                                    <p><strong>平均速度：</strong> ${speedStr}</p>
+                                    <p><strong>移動時間：</strong> ${timeStr}</p>
+                                </div>
+                            `;
+                            
+                            gpxLayer.bindPopup(popupContent).openPopup();
+                        });
+
+                        gpxLayer.addTo(map);
+                    });
+                });
+
+            } catch (error) {
+                console.error('無法讀取 GPX 列表:', error);
+            }
+        }
+
+        // 執行自動載入
+        loadAndDrawGPX();
+
+        // --- 輔助函式 ---
+        function formatTime(seconds) {
+            if (!seconds) return '無資料';
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            if (hours > 0) {
+                return `${hours} 小時 ${minutes} 分鐘`;
+            } else {
+                return `${minutes} 分鐘`;
+            }
+        }
+    </script>
+</body>
+</html>
