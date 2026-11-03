@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的單車軌跡地圖</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/2.1.2/gpx.min.js"></script>
+
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { height: 100vh; width: 100%; }
+        .gpx-info { font-size: 14px; line-height: 1.5; }
+        .gpx-info strong { color: #2c3e50; }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <script>
+        const map = L.map('map').setView([23.8, 120.9], 8); 
+
+        const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        });
+
+        const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri'
+        });
+
+        streetLayer.addTo(map);
+
+        const baseMaps = { "一般地圖": streetLayer, "衛星地圖": satelliteLayer };
+        L.control.layers(baseMaps).addTo(map);
+
+        const githubUser = 'MetalBao'; 
+        const repoName = 'biketracks';
+
+        async function loadAndDrawGPX() {
+            const apiUrl = `https://api.github.com/repos/${githubUser}/${repoName}/contents/gpx`;
+            
+            try {
+                const response = await fetch(apiUrl);
+                const files = await response.json();
+
+                const gpxFiles = files
+                    .filter(file => {
+                        const name = file.name.toLowerCase();
+                        return name.endsWith('.gpx') || name.endsWith('.gz') || name.endsWith('.zip');
+                    })
+                    .map(file => `gpx/${file.name}`);
+
+                gpxFiles.forEach(file => {
+                    new L.GPX(file, {
+                        async: true,
+                        markers: { startIcon: null, endIcon: null, wptIcon: null }, 
+                        polyline_options: {
+                            color: '#4169E1', 
+                            weight: 6,
+                            opacity: 0.9
+                        }
+                    }).on('loaded', function(e) {
+                        const gpxLayer = e.target;
+                        
+                        gpxLayer.on('click', function() {
+                            let name = '未命名路線';
+                            try {
+                                const tracks = gpxLayer.get_track_names();
+                                name = (tracks && tracks.length > 0) ? tracks[0] : file.split('/').pop().replace('.gpx', '').replace('.gz', '').replace('.zip', '');
+                            } catch (err) {
+                                name = file.split('/').pop().replace('.gpx', '').replace('.gz', '').replace('.zip', '');
+                            }
+
+                            const distance = gpxLayer.get_distance() || 0; 
+                            const elevationGain = gpxLayer.get_elevation_gain() || 0; 
+
+                            const distKm = (distance / 1000).toFixed(2);
+                            const elevStr = elevationGain > 0 ? elevationGain.toFixed(0) + ' 公尺' : '無資料';
+
+                            let dateStr = '無日期紀錄';
+                            let timeStr = '無時間紀錄';
+
+                            try {
+                                const startTime = gpxLayer.get_start_time(); 
+                                const endTime = gpxLayer.get_end_time();     
+                                
+                                if (startTime) {
+                                    const y = startTime.getFullYear();
+                                    const m = String(startTime.getMonth() + 1).padStart(2, '0');
+                                    const d = String(startTime.getDate()).padStart(2, '0');
+                                    dateStr = `${y}/${m}/${d}`;
+                                }
+
+                                if (startTime && endTime && endTime > startTime) {
+                                    let totalTime = (endTime.getTime() - startTime.getTime()) / 1000;
+                                    if (totalTime > 0 && totalTime < 86400) {
+                                        timeStr = formatTime(totalTime);
+                                    }
+                                }
+                            } catch (err) {}
+
+                            const popupContent = `
+                                <div class="gpx-info">
+                                    <h3 style="margin-top:0; margin-bottom:10px;">${name}</h3>
+                                    <p style="margin:4px 0;"><strong>日期：</strong> ${dateStr}</p>
+                                    <p style="margin:4px 0;"><strong>距離：</strong> ${distKm} 公里</p>
+                                    <p style="margin:4px 0;"><strong>爬升：</strong> ${elevStr}</p>
+                                    <p style="margin:4px 0;"><strong>移動時間：</strong> ${timeStr}</p>
+                                </div>
+                            `;
+                            
+                            gpxLayer.bindPopup(popupContent).openPopup();
+                        });
+
+                        gpxLayer.addTo(map);
+                    });
+                });
+
+            } catch (error) {
+                console.error('無法讀取 GPX 列表:', error);
+            }
+        }
+
+        loadAndDrawGPX();
+
+        function formatTime(seconds) {
+            if (!seconds) return '無資料';
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            return hours > 0 ? `${hours} 小時 ${minutes} 分鐘` : `${minutes} 分鐘`;
+        }
+    </script>
+</body>
+</html>
