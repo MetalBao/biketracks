@@ -1,7 +1,0 @@
-// 確認你的程式碼裡有這段
-const gpxFiles = files
-    .filter(file => {
-        const name = file.name.toLowerCase();
-        return name.endsWith('.gpx') || name.endsWith('.gz') || name.endsWith('.zip');
-    })
-    .map(file => `gpx/${file.name}`);
