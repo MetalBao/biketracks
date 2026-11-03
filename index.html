@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>包子的單車足跡</title>
+    <title>我的單車軌跡地圖</title>
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
@@ -53,74 +53,86 @@
                     })
                     .map(file => `gpx/${file.name}`);
 
-                gpxFiles.forEach(file => {
-                    new L.GPX(file, {
-                        async: true,
-                        markers: { startIcon: null, endIcon: null, wptIcon: null }, 
-                        polyline_options: {
-                            color: '#4169E1', 
-                            weight: 6,
-                            opacity: 0.9
-                        }
-                    }).on('loaded', function(e) {
-                        const gpxLayer = e.target;
-                        
-                        gpxLayer.on('click', function() {
-                            let name = '未命名路線';
-                            try {
-                                const tracks = gpxLayer.get_track_names();
-                                name = (tracks && tracks.length > 0) ? tracks[0] : file.split('/').pop().replace('.gpx', '').replace('.gz', '').replace('.zip', '');
-                            } catch (err) {
-                                name = file.split('/').pop().replace('.gpx', '').replace('.gz', '').replace('.zip', '');
+                if (gpxFiles.length === 0) {
+                    console.log("找不到 GPX 或 ZIP 檔案！請確認資料夾。");
+                    return;
+                }
+
+                // 使用 Promise.all 確保所有檔案都處理完畢
+                gpxFiles.forEach((file, index) => {
+                    // 稍微延遲每條路線的載入，避免瀏覽器瞬間卡死
+                    setTimeout(() => {
+                        new L.GPX(file, {
+                            async: true,
+                            markers: { startIcon: null, endIcon: null, wptIcon: null }, 
+                            polyline_options: {
+                                color: '#4169E1', 
+                                weight: 6,
+                                opacity: 0.9
                             }
-
-                            const distance = gpxLayer.get_distance() || 0; 
-                            const elevationGain = gpxLayer.get_elevation_gain() || 0; 
-
-                            const distKm = (distance / 1000).toFixed(2);
-                            const elevStr = elevationGain > 0 ? elevationGain.toFixed(0) + ' 公尺' : '無資料';
-
-                            let dateStr = '無日期紀錄';
-                            let timeStr = '無時間紀錄';
-
-                            try {
-                                const startTime = gpxLayer.get_start_time(); 
-                                const endTime = gpxLayer.get_end_time();     
-                                
-                                if (startTime) {
-                                    const y = startTime.getFullYear();
-                                    const m = String(startTime.getMonth() + 1).padStart(2, '0');
-                                    const d = String(startTime.getDate()).padStart(2, '0');
-                                    dateStr = `${y}/${m}/${d}`;
-                                }
-
-                                if (startTime && endTime && endTime > startTime) {
-                                    let totalTime = (endTime.getTime() - startTime.getTime()) / 1000;
-                                    if (totalTime > 0 && totalTime < 86400) {
-                                        timeStr = formatTime(totalTime);
-                                    }
-                                }
-                            } catch (err) {}
-
-                            const popupContent = `
-                                <div class="gpx-info">
-                                    <h3 style="margin-top:0; margin-bottom:10px;">${name}</h3>
-                                    <p style="margin:4px 0;"><strong>日期：</strong> ${dateStr}</p>
-                                    <p style="margin:4px 0;"><strong>距離：</strong> ${distKm} 公里</p>
-                                    <p style="margin:4px 0;"><strong>爬升：</strong> ${elevStr}</p>
-                                    <p style="margin:4px 0;"><strong>移動時間：</strong> ${timeStr}</p>
-                                </div>
-                            `;
+                        }).on('loaded', function(e) {
+                            const gpxLayer = e.target;
                             
-                            gpxLayer.bindPopup(popupContent).openPopup();
-                        });
+                            gpxLayer.on('click', function() {
+                                let name = '未命名路線';
+                                try {
+                                    const tracks = gpxLayer.get_track_names();
+                                    name = (tracks && tracks.length > 0) ? tracks[0] : file.split('/').pop().replace('.gpx', '').replace('.gz', '').replace('.zip', '');
+                                } catch (err) {
+                                    name = file.split('/').pop().replace('.gpx', '').replace('.gz', '').replace('.zip', '');
+                                }
 
-                        gpxLayer.addTo(map);
-                    });
+                                const distance = gpxLayer.get_distance() || 0; 
+                                const elevationGain = gpxLayer.get_elevation_gain() || 0; 
+
+                                const distKm = (distance / 1000).toFixed(2);
+                                const elevStr = elevationGain > 0 ? elevationGain.toFixed(0) + ' 公尺' : '無資料';
+
+                                let dateStr = '無日期紀錄';
+                                let timeStr = '無時間紀錄';
+
+                                try {
+                                    const startTime = gpxLayer.get_start_time(); 
+                                    const endTime = gpxLayer.get_end_time();     
+                                    
+                                    if (startTime) {
+                                        const y = startTime.getFullYear();
+                                        const m = String(startTime.getMonth() + 1).padStart(2, '0');
+                                        const d = String(startTime.getDate()).padStart(2, '0');
+                                        dateStr = `${y}/${m}/${d}`;
+                                    }
+
+                                    if (startTime && endTime && endTime > startTime) {
+                                        let totalTime = (endTime.getTime() - startTime.getTime()) / 1000;
+                                        if (totalTime > 0 && totalTime < 86400) {
+                                            timeStr = formatTime(totalTime);
+                                        }
+                                    }
+                                } catch (err) {}
+
+                                const popupContent = `
+                                    <div class="gpx-info">
+                                        <h3 style="margin-top:0; margin-bottom:10px;">${name}</h3>
+                                        <p style="margin:4px 0;"><strong>日期：</strong> ${dateStr}</p>
+                                        <p style="margin:4px 0;"><strong>距離：</strong> ${distKm} 公里</p>
+                                        <p style="margin:4px 0;"><strong>爬升：</strong> ${elevStr}</p>
+                                        <p style="margin:4px 0;"><strong>移動時間：</strong> ${timeStr}</p>
+                                    </div>
+                                `;
+                                
+                                gpxLayer.bindPopup(popupContent).openPopup();
+                            });
+
+                            gpxLayer.addTo(map);
+                        }).on('error', function(err) {
+                            // 如果某個 ZIP 檔損壞或讀取失敗，不會影響其他路線，只在 Console 顯示錯誤
+                            console.warn('無法載入檔案:', file);
+                        });
+                    }, index * 50); // 每隔 50 毫秒載入一個，避免卡死
                 });
 
             } catch (error) {
-                console.error('無法讀取 GPX 列表:', error);
+                console.error('無法讀取列表:', error);
             }
         }
 
