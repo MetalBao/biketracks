@@ -87,7 +87,20 @@
                         
                         // --- 核心：點擊事件與時間防呆 ---
                         gpxLayer.on('click', function() {
-                            const name = gpxLayer.get_name() || '未命名路線';
+                                                // 嘗試讀取 GPX 檔案裡的 <trk> 軌跡名稱（例如 Ann home 騎乘）
+                    let name = '未命名路線';
+                    const trkElement = gpxLayer._gpx.querySelector('trk');
+                    if (trkElement) {
+                        const trkNameElement = trkElement.querySelector('name');
+                        if (trkNameElement) {
+                            name = trkNameElement.textContent;
+                        }
+                    }
+                    
+                    // 如果 GPX 裡面真的沒寫名字，才退回使用檔案名稱
+                    if (name === '未命名路線') {
+                        name = file.split('/').pop().replace('.gpx', '');
+                    }
                             const distance = gpxLayer.get_distance(); 
                             const elevationGain = gpxLayer.get_elevation_gain(); 
 
