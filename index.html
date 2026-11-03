@@ -5,11 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>我的單車軌跡地圖</title>
     
-    <!-- 引入 Leaflet 樣式與腳本 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
-    
-    <!-- 引入 leaflet-gpx 外掛 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/2.1.2/gpx.min.js"></script>
 
     <style>
@@ -38,15 +35,13 @@
 
         streetLayer.addTo(map);
 
-        // 3. 加入圖層切換控制項
         const baseMaps = {
             "一般地圖": streetLayer,
             "衛星地圖": satelliteLayer
         };
         L.control.layers(baseMaps).addTo(map);
 
-        // --- 4. 自動抓取 GPX 檔案列表 ---
-        // ⚠️ 請確認這裡是你的 GitHub 用戶名和倉庫名稱
+        // --- 3. 自動抓取 GPX 檔案列表 ---
         const githubUser = 'MetalBao'; 
         const repoName = 'biketracks';
 
@@ -54,80 +49,72 @@
             const apiUrl = `https://api.github.com/repos/${githubUser}/${repoName}/contents/gpx`;
             
             try {
-                // 向 GitHub 請求 gpx 資料夾的內容
                 const response = await fetch(apiUrl);
                 const files = await response.json();
 
-                // 過濾出 .gpx 結尾的檔案
                 const gpxFiles = files
                     .filter(file => file.name.toLowerCase().endsWith('.gpx'))
                     .map(file => `gpx/${file.name}`);
 
-                // 5. 迴圈載入每一個 GPX 檔案
                 gpxFiles.forEach(file => {
                     new L.GPX(file, {
                         async: true,
-                        // 隱藏起點、終點與所有航點的藍色水滴圖標
-                        markers: {
-                            startIcon: null,
-                            endIcon: null,
-                            wptIcon: null
-                        },
+                        markers: { startIcon: null, endIcon: null, wptIcon: null }, // 隱藏水滴
                         polyline_options: {
-                            color: '#4169E1', // 👈 寶藍色
-                            weight: 6,        // 軌跡粗細
-                            opacity: 0.9      // 透明度
+                            color: '#4169E1', // 寶藍色
+                            weight: 6,
+                            opacity: 0.9
                         }
                     }).on('loaded', function(e) {
                         const gpxLayer = e.target;
                         
-                        // --- 核心：點擊事件與時間防呆 ---
+                        // --- 核心：點擊事件 ---
                         gpxLayer.on('click', function() {
-                            // 讀取 GPX 內的軌跡名稱 (使用外掛安全方法)
-                            let name = '未命名路線';
-                            const tracks = gpxLayer.get_track_names();
-                            if (tracks && tracks.length > 0) {
-                                name = tracks[0];
-                            } else {
-                                // 如果真的沒有，才退回使用檔名
-                                name = file.split('/').pop().replace('.gpx', '');
-                            }
-
-                            const distance = gpxLayer.get_distance(); 
-                            const elevationGain = gpxLayer.get_elevation_gain(); 
-
-                            // 自己抓開始與結束時間，避免外掛算錯
-                            const startTime = gpxLayer.get_start_time(); 
-                            const endTime = gpxLayer.get_end_time();     
                             
-                            let totalTime = 0;
-                            if (startTime && endTime && endTime > startTime) {
-                                totalTime = (endTime.getTime() - startTime.getTime()) / 1000; // 換算成秒
+                            // 1. 抓取名稱 (使用最安全的 try-catch 避免報錯)
+                            let name = '未命名路線';
+                            try {
+                                const tracks = gpxLayer.get_track_names();
+                                if (tracks && tracks.length > 0) {
+                                    name = tracks[0];
+                                } else {
+                                    name = file.split('/').pop().replace('.gpx', '');
+                                }
+                            } catch (err) {
+                                name = file.split('/').pop().replace('.gpx', ''); // 備用檔名
                             }
+
+                            // 2. 抓取距離與爬升
+                            const distance = gpxLayer.get_distance() || 0; 
+                            const elevationGain = gpxLayer.get_elevation_gain() || 0; 
 
                             const distKm = (distance / 1000).toFixed(2);
-                            const elevStr = elevationGain ? elevationGain.toFixed(0) + ' 公尺' : '無資料';
+                            const elevStr = elevationGain > 0 ? elevationGain.toFixed(0) + ' 公尺' : '無資料';
 
-                            let timeStr = '無資料';
+                            // 3. 因為精簡工具可能刪除了時間，所以我們直接用安全的寫法抓取
+                            let timeStr = '無時間紀錄';
                             let speedStr = '無資料';
 
-                            // 計算時間與速度
-                            if (totalTime > 0 && totalTime < 86400) {
-                                // 小於 24 小時，正常顯示
-                                timeStr = formatTime(totalTime);
-                                const hours = totalTime / 3600;
-                                const avgSpeed = (distKm / hours).toFixed(1);
-                                speedStr = avgSpeed + ' km/h';
-                            } else if (totalTime >= 86400) {
-                                // 大於 24 小時，顯示天數
-                                const days = Math.floor(totalTime / 86400);
-                                timeStr = `超過 ${days} 天 (多日行程)`;
-                                speedStr = '不計算';
-                            } else {
-                                // 因為精簡工具把時間標籤刪了，所以會顯示這個
-                                timeStr = '無時間紀錄';
+                            try {
+                                // 如果外掛有抓到時間，才計算
+                                const startTime = gpxLayer.get_start_time(); 
+                                const endTime = gpxLayer.get_end_time();     
+                                
+                                if (startTime && endTime && endTime > startTime) {
+                                    let totalTime = (endTime.getTime() - startTime.getTime()) / 1000;
+                                    
+                                    // 防呆：小於 24 小時才計算
+                                    if (totalTime > 0 && totalTime < 86400) {
+                                        timeStr = formatTime(totalTime);
+                                        const hours = totalTime / 3600;
+                                        speedStr = (distKm / hours).toFixed(1) + ' km/h';
+                                    }
+                                }
+                            } catch (err) {
+                                // 如果抓時間發生錯誤，就維持顯示無時間紀錄
                             }
 
+                            // 4. 組合彈窗
                             const popupContent = `
                                 <div class="gpx-info">
                                     <h3>${name}</h3>
@@ -138,6 +125,7 @@
                                 </div>
                             `;
                             
+                            // 綁定並打開彈窗
                             gpxLayer.bindPopup(popupContent).openPopup();
                         });
 
@@ -150,19 +138,14 @@
             }
         }
 
-        // 執行自動載入
         loadAndDrawGPX();
 
-        // --- 輔助函式 ---
+        // 時間格式化
         function formatTime(seconds) {
             if (!seconds) return '無資料';
             const hours = Math.floor(seconds / 3600);
             const minutes = Math.floor((seconds % 3600) / 60);
-            if (hours > 0) {
-                return `${hours} 小時 ${minutes} 分鐘`;
-            } else {
-                return `${minutes} 分鐘`;
-            }
+            return hours > 0 ? `${hours} 小時 ${minutes} 分鐘` : `${minutes} 分鐘`;
         }
     </script>
 </body>
